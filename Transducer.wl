@@ -18,31 +18,25 @@ SolveSteadyOsc::usage="SolveSteadyOsc[\[CapitalDelta], \[Kappa], \[CapitalOmega]
 AmatDecompose::usage="AmatDecompose[Am] decomposes the matrix Am into dc, positive-frequency and negative-frequency parts.";
 
 
-FFTFreq::usage="FFTFreq[n, d] generates the sample frequencies of the n-point FFT with sample spacing d.";
-
-
-FFTSample::usage="FFTSample[func, n, dt, tf] sample function with n-point DFT from tf-(n-1)dt to tf.";
-
-
-InputSigFFT::usage="InputSigFFT[\[Omega], n, dt] calculate the n-point spectrum density of the input signal at frequenc \[Omega] with sample spacing d.";
-
-
-InputSigAmp::usage="InputSigAmp[\[Omega], n, dt] calculates the input signal amplitude using a n-point squre window function.";
-
-
-OutputPiecewisePlot::usage="OutputPiecewisePlot[func, ts, te, tf, points] plots piecewise output signals where the Fourier transformed region is highlighted in red.";
-
-
-OutputFreqPlot::usage="OutputFreqPlot[func, n, dt, tf, \[Omega]] plot the spectrum of the `func` sampled from tf-(n-1)dt to tf, together with a single frequency input function centered at \[Omega].";
-
-
 Iterative\[CapitalXi]::usage="Iterative\[CapitalXi][Ad, Ap, Am, N, \[Omega], \[Omega]m] calculate the \[CapitalXi](\[Omega]) matrix to Nth order given the driving frequency \[Omega]m for the pump laser.";
 
 
-GetEfficiency::usage="GetEfficiency[func, n, dt, \[Omega], t] calculate the transduction efficieny \[Eta](\[Omega]) for `func` sampled from t-(n-1)dt to t.";
-
-
 Logspace::usage="Logspace[a, b, n] gives a sequence starting at 10^a and ending at 10^b, with n points logarithmically spaced.";
+
+
+TransFConst::usage="TransFConst[A, B, \[Omega], opts] solves the transfer function for the case of constant driving." 
+
+
+TransFOsc::usage="TransFOsc[Ad, Ap, Am, B, N, \[Omega]] solves the transfer matrix T(\[Omega]) for the case of PD with 2N sidebands."
+
+
+IterativeX
+
+
+TMech
+
+
+TForth
 
 
 Begin["`Private`"];
@@ -83,7 +77,7 @@ SolveSteadyConst[\[CapitalDelta]_, \[Kappa]_, \[CapitalOmega]_] := Module[{y, t,
 SolveODEOsc[\[CapitalDelta]_, \[Kappa]_, \[CapitalOmega]_, \[Omega]_, t_] :=
     Module[{y, sol},
         sol = DSolve[{y'[t] == -I * \[CapitalDelta] * y[t] - \[Kappa] * y[t] / 2 - I * \[CapitalOmega] * 
-            Exp[-I * \[Omega] * t], y[0] == 0}, y[t], t];
+            Exp[-I * 2 * \[Omega] * t], y[0] == 0}, y[t], t];
         y[t] /. sol[[1]] // FullSimplify
     ];
 
@@ -91,7 +85,7 @@ SolveODEOsc[\[CapitalDelta]_, \[Kappa]_, \[CapitalOmega]_, \[Omega]_, t_] :=
 SolveSteadyOsc[\[CapitalDelta]_, \[Kappa]_, \[CapitalOmega]_, \[Omega]_] :=
     Module[{y, t, sol},
         sol = SolveODEOsc[\[CapitalDelta], \[Kappa], \[CapitalOmega], \[Omega], t];
-        Coefficient[sol, Exp[-I * t * \[Omega]]]
+        Coefficient[sol, Exp[-2 * I * t * \[Omega]]]
     ];
 
 
@@ -111,90 +105,86 @@ AmatDecompose[Am_] :=
     ];
 
 
-FFTFreq[n_, d_] :=
-    Module[{xf},
-        xf =
-            If[EvenQ[n],
-                Join[Table[i, {i, 0, n / 2 - 1}], Table[i, {i, -n / 2,
-                     -1}]] / (d * n)
-                ,
-                Join[Table[i, {i, 0, (n - 1) / 2}], Table[i, {i, -(n 
-                    - 1) / 2, -1}]] / (d * n)
-            ];
-        FFTShift[xf]
-    ];
-
-
-FFTShift[dat_?ArrayQ] :=
-    Module[{dims = Dimensions[dat]},
-        RotateRight[dat, Quotient[dims, 2]]
-    ];
-
-
-FFTSample[func_, n_, dt_, tf_] :=
-    Module[{ysample},
-        FFTShift[Fourier[Table[func[t][[1]], {t, tf - (n - 1) * dt, tf, dt}]]]/Sqrt[n]
-    ];
-
-
-InputSigFFT[\[Omega]_, n_, dt_]:=Module[{},
-	FFTShift[Fourier[Table[-1/Sqrt[2*\[Pi]]*Exp[-I*\[Omega]*t],{t,0,(n-1)*dt,dt}]]]/Sqrt[n]
-];
-
-
-InputSigAmp[\[Omega]_, n_, dt_]:=Module[{yf},
-	yf=FFTShift[Fourier[Table[-1/Sqrt[2*\[Pi]]*Exp[-I*\[Omega]*t],{t,0,(n-1)*dt,dt}]]];
-	(Max@Abs@yf)/Sqrt[n]
-];
-
-
-OutputPiecewisePlot[func_, ts_, te_, tf_, points_] :=
-    Module[{p},
-        p = Show[{Plot[Evaluate[func[t]], {t, 0, ts}, PlotPoints
-             -> points[[1]]], Plot[Evaluate[func[t]], {t, ts, te}, PlotPoints
-             -> points[[2]], PlotStyle -> Red], Plot[Evaluate[func[t]], {t,
-             te, tf}, PlotPoints -> points[[3]]]}, PlotRange -> All, BaseStyle ->
-             {FontFamily -> "Times New Roman", 15}, LabelStyle -> {FontFamily -> 
-            "Times New Roman"}];
-        Legended[p, Placed[LineLegend[{Red}, {Style["Fourier sampled region",
-             FontFamily -> "Times New Roman", 15]}], Top]]
-    ];
-
-
-OutputFreqPlot[func_, n_, dt_, tf_, \[Omega]_] :=
-    Module[{xf, yf, yfIn},
-        xf = FFTFreq[n, dt];
-        yf = FFTSample[func, n, dt, tf];
-        yfIn = InputSigFFT[\[Omega], n, dt];
-        p = Show[ListLinePlot[Transpose[{xf, Abs[yfIn]}], PlotRange ->
-             All, PlotStyle -> {Blue, Thickness[0.01]}], ListLinePlot[Transpose[{xf,
-             Abs[yf]}], PlotRange -> All, PlotStyle -> {Red, Thickness[0.01]}], BaseStyle
-             -> {FontFamily -> "Times New Roman", 15}, LabelStyle -> {FontFamily 
-            -> "Times New Roman"}];
-        Legended[p, Placed[LineLegend[{Blue, Red}, {Style["Input Signal",
-             FontFamily -> "Times New Roman", 15], Style["Output Signal", FontFamily
-             -> "Times New Roman", 15]}], {0.2, 0.8}]]
-    ];
-
-
-GetEfficiency[func_, n_, dt_, \[Omega]_, t_] :=
-    Module[{inputAmp = InputSigAmp[\[Omega], n, dt]},
-        Table[Max[Abs[FFTSample[func, n, dt, tau]]]/inputAmp, {tau, t}]
-    ];
-
-
-Iterative\[CapitalXi][Ad_, Ap_, Am_, N_, \[Omega]_, \[Omega]m_] :=
+Iterative\[CapitalXi][Ad_, Ap_, Am_, N_, \[Omega]_, opts : OptionsPattern[]] :=
     Module[{\[CapitalXi]p, \[CapitalXi]m, iden},
-        iden = IdentityMatrix[Dimensions[Ad, 1][[1]]]; \[CapitalXi]p = Ap . Inverse[
-            I * (-\[Omega] - 2 * N * \[Omega]m) * iden - Ad] . Am; \[CapitalXi]m = Am . Inverse[I * (-\[Omega] + 
-            2 * N * \[Omega]m) * iden - Ad] . Ap; Do[\[CapitalXi]p = Ap . Inverse[I * (-\[Omega] - 2 * N *
-             \[Omega]m) * iden - Ad - \[CapitalXi]p] . Am; \[CapitalXi]m = Am . Inverse[I * (-\[Omega] + 2 * N * \[Omega]m) 
-            * iden - Ad - \[CapitalXi]m] . Ap, {i, N - 1, 1, -1}]; {Simplify[\[CapitalXi]p], Simplify[\[CapitalXi]m
-            ]}
+        iden = IdentityMatrix[Dimensions[Ad, 1][[1]]]; 
+        \[CapitalXi]p = Ap . Simplify[Inverse[
+            I * (-\[Omega] - 2 * N * \[Omega]) * iden - Ad],FilterRules[{opts}, Options[
+            Simplify]]] . Am; 
+        \[CapitalXi]m = Am . Simplify[Inverse[I * (-\[Omega] + 
+            2 * N * \[Omega]) * iden - Ad], FilterRules[{opts}, Options[
+            Simplify]]] . Ap; 
+        Do[\[CapitalXi]p = Ap . Simplify[Inverse[I * (-\[Omega] - 2 * i *
+             \[Omega]) * iden - Ad - \[CapitalXi]p], FilterRules[{opts}, Options[
+            Simplify]]] . Am; \[CapitalXi]m = Am . Simplify[Inverse[I * (-\[Omega] + 2 * i * \[Omega]) 
+            * iden - Ad - \[CapitalXi]m],FilterRules[{opts}, Options[
+            Simplify]]] . Ap, {i, N - 1, 1, -1}]; 
+       {Simplify[\[CapitalXi]p, FilterRules[{opts}, Options[
+            Simplify]]], Simplify[\[CapitalXi]m, FilterRules[{opts}, Options[
+            Simplify]]]}
     ];
 
 
 Logspace[a_, b_, n_] := 10.0^Range[a, b, (b - a)/(n - 1)];
+
+
+TransFConst[A_, B_, \[Omega]_, opts : OptionsPattern[]] :=
+    Module[{dimIn = Dimensions[B, 2][[2]], dimS = Dimensions[A, 1][[1
+        ]], idenIn, idenS},
+        idenIn = IdentityMatrix[dimIn]; idenS = IdentityMatrix[dimS];
+             FullSimplify[Transpose[B] . Inverse[-idenS * I * \[Omega] - A] . B - idenIn,
+             FilterRules[{opts}, Options[FullSimplify]]]
+    ]
+
+
+TransFOsc[Ad_, Ap_, Am_, B_, N_, \[Omega]_] :=
+    Module[{\[CapitalXi], dimIn = Dimensions[B, 2][[2]], dimS = Dimensions[B, 1][[1
+        ]], idenIn, idenS},
+        idenIn = IdentityMatrix[dimIn]; idenS = IdentityMatrix[dimS];
+        \[CapitalXi] = Iterative\[CapitalXi][Ad, Ap, Am, N, \[Omega]]; Transpose[B] . Inverse[-I *
+             \[Omega] * idenS - Ad - \[CapitalXi][[1]] - \[CapitalXi][[2]]] . B - idenIn // Simplify
+    ]
+
+
+IterativeX[Ad_, Ap_, Am_, N_, \[Omega]_, opts : OptionsPattern[]] := 
+	Module[{iden, rules, Xp={}, Xm={}, \[CapitalXi]p={}, \[CapitalXi]m={}},
+	iden = IdentityMatrix[Dimensions[Ad,1][[1]]];
+	rules = FilterRules[{opts}, Options[
+            Simplify]];
+	Xp=Prepend[Xp, Simplify[Inverse[
+            I * (-\[Omega] - 2 * N * \[Omega]) * iden - Ad], rules]];
+    Xm=Prepend[Xm, Simplify[Inverse[I * (-\[Omega] + 
+            2 * N * \[Omega]) * iden - Ad], rules]];
+    \[CapitalXi]p=Prepend[\[CapitalXi]p, Ap . Xp[[1]] . Am];
+    \[CapitalXi]m=Prepend[\[CapitalXi]m, Am . Xm[[1]] . Ap];
+    Do[Xp=Prepend[Xp, Simplify[Inverse[I * (-\[Omega] - 2 * i *
+             \[Omega]) * iden - Ad - \[CapitalXi]p[[1]]], rules]];
+       Xm=Prepend[Xm, Simplify[Inverse[I * (-\[Omega] + 2 * i * \[Omega]) 
+            * iden - Ad - \[CapitalXi]m[[1]]], rules]];
+       \[CapitalXi]p=Prepend[\[CapitalXi]p,Ap . Xp[[1]] . Am]; 
+       \[CapitalXi]m=Prepend[\[CapitalXi]m,Am . Xm[[1]] . Ap], {i, N - 1, 1, -1}];
+    {Xp, \[CapitalXi]p, Xm, \[CapitalXi]m}
+	]
+
+
+TMech[Ad_, Ap_, Am_, B_, N_, \[Omega]_, opts : OptionsPattern[]] :=
+    Module[{iden, Xp, Kp, Xm, Km, X, K = Transpose[B], rules},
+        iden = IdentityMatrix[Dimensions[Ad, 1][[1]]]; rules = FilterRules[
+            {opts}, Options[Simplify]]; {Xp, Kp, Xm, Km} = IterativeX[Ad, Ap, Am,
+             N, \[Omega]]; X = Simplify[Inverse[-I * \[Omega] * iden - Ad - Kp[[1]] - Km[[1]]],
+             rules]; {Simplify[K . X . Ap . Xp[[1]] . B, rules], Simplify[K . X .
+             Am . Xm[[1]] . B, rules]}
+    ]
+
+
+TForth[Ad_, Ap_, Am_, B_, N_,\[Omega]_, opts : OptionsPattern[]] :=
+    Module[{iden, Xp, Kp, Xm, Km, X, K = Transpose[B], rules},
+        iden = IdentityMatrix[Dimensions[Ad, 1][[1]]]; rules = FilterRules[
+            {opts}, Options[Simplify]]; {Xp, Kp, Xm, Km} = IterativeX[Ad, Ap, Am,
+             N, \[Omega]]; X = Simplify[Inverse[-I * \[Omega] * iden - Ad - Kp[[1]] - Km[[1]]],
+             rules]; {Simplify[K . X . Ap . Xp[[1]] . Ap . Xp[[2]] . B, rules], Simplify[
+            K . X . Am . Xm[[1]] . Am . Xm[[2]] . B, rules]}
+    ]
 
 
 End[];
